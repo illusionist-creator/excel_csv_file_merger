@@ -13,8 +13,6 @@ library(data.table) # Added for more powerful data handling
 ui <- fluidPage(
   # Set the page title that appears in browser tab
   tags$head(
-    # Add favicon/icon for the browser tab
-    tags$link(rel = "firstdraft", href = "favicon.ico"),
     # Set the page title
     tags$title("File Merger Pro"),
     
@@ -236,6 +234,7 @@ ui <- fluidPage(
         position: absolute;
         left: 0;
         top: 0;
+        transition: width 0.3s ease;
       }
       
       /* Radio buttons */
@@ -268,6 +267,27 @@ ui <- fluidPage(
         border-radius: 0;
         box-shadow: 3px 3px 0px #000000;
       }
+      
+      /* Success/Error message styling */
+      .neo-alert {
+        padding: 15px;
+        margin: 20px 0;
+        border: 3px solid #000000;
+        box-shadow: 4px 4px 0px #000000;
+        font-weight: bold;
+        text-align: center;
+        border-radius: 0;
+      }
+      
+      .neo-alert-success {
+        background-color: #52ff00;
+        color: #000000;
+      }
+      
+      .neo-alert-error {
+        background-color: #ff6b6b;
+        color: #ffffff;
+      }
     '))
   ),
   
@@ -277,8 +297,6 @@ ui <- fluidPage(
   tags$div(
     class = "app-header",
     tags$div(style = "display: flex; align-items: center; justify-content: center; padding: 10px 0;",
-             # App icon/logo
-             tags$img(src = "https://icon-icons.com/icons2/37/PNG/512/merge_files_55864.png", height = "50px", style = "margin-right: 15px;"),
              # App name
              tags$div(
                tags$h1("FILE MERGER PRO", style = "color: #000000; margin: 0; text-align: center; font-weight: 700; font-size: 32px; text-shadow: 2px 2px 0px #ffffff;"),
@@ -304,7 +322,7 @@ ui <- fluidPage(
                div(
                  class = "neo-container",
                  div(class = "neo-header", 
-                     tags$h3("UPLOAD FILES & SET OPTIONS", style = "margin: 0;"),
+                     tags$h3("UPLOAD FILES & SET OPTIONS", style = "margin: 0;font-weight: 700; font-size: 32px; text-shadow: 2px 2px 0px #ffffff;"),
                      tags$span(id = "uploadStatus", class = "neo-badge", style = "margin-top: 5px;", "READY TO ROCK")),
                  
                  fluidRow(
@@ -318,7 +336,7 @@ ui <- fluidPage(
                                 tags$br(),
                                 "EXCEL OR CSV ONLY!",
                                 div(
-                                fileInput("files", NULL, multiple = TRUE, accept = c(".csv", ".xls", ".xlsx"))
+                                  fileInput("files", NULL, multiple = TRUE, accept = c(".csv", ".xls", ".xlsx"))
                                 )
                               )
                           ),
@@ -354,6 +372,7 @@ ui <- fluidPage(
                               checkboxInput("removeEmptyRows", "REMOVE EMPTY ROWS", value = TRUE),
                               checkboxInput("trimWhitespace", "TRIM WHITESPACE FROM TEXT", value = TRUE),
                               checkboxInput("addFilenameColumn", "ADD FILENAME AS A COLUMN", value = FALSE),
+                              checkboxInput("cleanSpecialChars", "CONVERT SPECIAL CHARACTERS TO 0", value = TRUE),
                               
                               tags$hr(style = "border-color: #000000; border-width: 2px;"),
                               
@@ -372,6 +391,17 @@ ui <- fluidPage(
                               )
                           )
                    )
+                 )
+               )
+        )
+      ),
+      
+      # Status messages area
+      fluidRow(
+        column(12,
+               hidden(
+                 div(id = "statusMessages",
+                     uiOutput("statusMessage")
                  )
                )
         )
@@ -407,17 +437,15 @@ ui <- fluidPage(
                  class = "neo-container",
                  div(class = "neo-header", tags$h3("PROCESSING STATUS", style = "margin: 0;")),
                  
-                 hidden(
-                   div(id = "processingMsg", style = "padding: 20px;",
-                       tags$div(class = "text-center",
-                                tags$p("PROCESSING FILES... HANG TIGHT!", 
-                                       style = "font-size: 18px; margin-bottom: 15px; font-weight: bold;"), 
-                                tags$div(class = "neo-progress",
-                                         tags$div(id = "progressBar", class = "neo-progress-bar", style = "width: 0%")
-                                ),
-                                tags$p(id = "progressText", "0%", style = "margin-top: 5px; font-weight: bold;")
-                       )
-                   )
+                 div(id = "processingMsg", style = "padding: 20px;",
+                     tags$div(class = "text-center",
+                              tags$p(id = "processingTitle", "READY TO PROCESS FILES!", 
+                                     style = "font-size: 18px; margin-bottom: 15px; font-weight: bold;"), 
+                              tags$div(class = "neo-progress",
+                                       tags$div(id = "progressBar", class = "neo-progress-bar", style = "width: 0%", "0%")
+                              ),
+                              tags$p(id = "progressText", "Upload files and click 'MERGE FILES!' to start", style = "margin-top: 5px; font-weight: bold;")
+                     )
                  ),
                  
                  div(style = "background-color: #000000; padding: 15px; color: #52ff00; font-family: 'VT323', monospace; font-size: 18px; margin: 20px;",
@@ -464,6 +492,7 @@ ui <- fluidPage(
                        tags$p("Enable 'Remove empty rows' to clean up your data."),
                        tags$p("Enable 'Trim whitespace' to remove leading/trailing spaces from text fields."),
                        tags$p("Enable 'Add filename as a column' to include the source filename for each row."),
+                       tags$p("Enable 'Clean special characters' to automatically convert special characters to '0' (recommended for problematic files)."),
                        
                        tags$h4(class = "neo-help-title", "STEP 3: PROCESS FILES"),
                        tags$p("Click the 'MERGE FILES!' button to start the processing."),
@@ -478,7 +507,8 @@ ui <- fluidPage(
                          tags$li("The app will attempt to handle inconsistent data types by converting to text."),
                          tags$li("Very large files may take longer to process. Be patient!"),
                          tags$li("Setting the correct header row number is essential! Default is row 1."),
-                         tags$li("Using 'Add filename as a column' helps track the origin of each row in the merged data.")
+                         tags$li("Using 'Add filename as a column' helps track the origin of each row in the merged data."),
+                         tags$li("If you encounter errors with special characters, enable 'Clean special characters' option.")
                        )
                      )
                  )
@@ -503,7 +533,7 @@ ui <- fluidPage(
                      tags$img(src = "https://icon-icons.com/icons2/37/PNG/512/merge_files_55864.png", height = "100px", style = "margin-bottom: 20px;"),
                      tags$h3("FILE MERGER PRO", style = "color: #000000; font-weight: bold;"),
                      tags$div(style = "display: inline-block; background-color: #ff6b6b; padding: 5px 15px; border: 2px solid #000000; box-shadow: 3px 3px 0px #000000;",
-                              tags$p("VERSION 2.0.0", style = "color: #000000; margin: 0; font-weight: bold;")),
+                              tags$p("VERSION 2.3.0", style = "color: #000000; margin: 0; font-weight: bold;")),
                      tags$p("A powerful tool for merging Excel and CSV files with Neobrutalist style!", style = "margin-top: 15px;"),
                      tags$hr(style = "border-color: #000000; width: 50%; border-width: 2px;"),
                      tags$p("© 2025 Keyur Makwana", style = "color: #000000;")
@@ -524,7 +554,9 @@ server <- function(input, output, session) {
     processing_log = NULL,
     file_details = NULL,
     progress_value = 0,
-    uploaded_files = 0
+    uploaded_files = 0,
+    processing_complete = FALSE,
+    processing_success = FALSE
   )
   
   # Display uploaded files info
@@ -609,6 +641,21 @@ server <- function(input, output, session) {
               class = 'cell-border stripe hover')
   })
   
+  # Function to clean special characters
+  clean_special_chars <- function(df) {
+    if (input$cleanSpecialChars) {
+      char_cols <- sapply(df, is.character)
+      
+      # Convert special characters to 0 in character columns
+      df[char_cols] <- lapply(df[char_cols], function(x) {
+        # Replace any non-alphanumeric characters (except spaces and dots) with "0"
+        gsub("[^[:alnum:] \\.]", "0", x, perl = TRUE)
+      })
+    }
+    
+    return(df)
+  }
+  
   # Function to read files with header row number option
   read_file <- function(file_path, file_name) {
     file_ext <- tolower(file_ext(file_path))
@@ -625,10 +672,10 @@ server <- function(input, output, session) {
         } else {
           # Skip rows and set header
           data <- as.data.frame(fread(file_path, skip = header_row_num - 1, header = TRUE))
-          
-          # If we had to skip rows, we need to handle the skipped data separately if needed
-          # Here we simply continue with the data starting from the header row
         }
+        
+        # Clean special characters if option is enabled
+        data <- clean_special_chars(data)
         
         # Add filename column if option is selected
         if (input$addFilenameColumn) {
@@ -640,10 +687,13 @@ server <- function(input, output, session) {
         # Fallback to readr if fread fails
         tryCatch({
           if (header_row_num == 1) {
-            data <- read_csv(file_path, col_names = TRUE)
+            data <- read_csv(file_path, col_names = TRUE, show_col_types = FALSE)
           } else {
-            data <- read_csv(file_path, skip = header_row_num - 1, col_names = TRUE)
+            data <- read_csv(file_path, skip = header_row_num - 1, col_names = TRUE, show_col_types = FALSE)
           }
+          
+          # Clean special characters if option is enabled
+          data <- clean_special_chars(data)
           
           # Add filename column if option is selected
           if (input$addFilenameColumn) {
@@ -677,6 +727,9 @@ server <- function(input, output, session) {
         # Standardize column names - replace spaces and special chars with underscores
         names(data) <- make.names(names(data), unique = TRUE)
         
+        # Clean special characters if option is enabled
+        data <- clean_special_chars(data)
+        
         # Add filename column if option is selected
         if (input$addFilenameColumn) {
           data$Source_File <- file_name
@@ -691,192 +744,248 @@ server <- function(input, output, session) {
     }
   }
   
-  # Update progress bar
-  observe({
-    invalidateLater(100)
-    if(values$progress_value > 0 && values$progress_value < 100) {
-      shinyjs::html("progressText", paste0(values$progress_value, "%"))
-      shinyjs::runjs(paste0('$("#progressBar").css("width", "', values$progress_value, '%");'))
+  # Update progress bar with improved functionality
+  updateProgress <- function(value) {
+    values$progress_value <- value
+    
+    # Update progress bar width and text
+    shinyjs::runjs(paste0('
+      $("#progressBar").css("width", "', value, '%");
+      $("#progressBar").text("', value, '%");
+    '))
+    
+    # Update progress text
+    if (value == 0) {
+      shinyjs::html("progressText", "Ready to start processing...")
+    } else if (value == 100) {
+      if (values$processing_success) {
+        shinyjs::html("progressText", "✅ Processing completed successfully!")
+      } else {
+        shinyjs::html("progressText", "❌ Processing completed with errors!")
+      }
+    } else {
+      shinyjs::html("progressText", paste0("Processing files... ", value, "% complete"))
     }
-  })
+  }
   
-  # Process files when merge button is clicked
+  # Main merge function with enhanced error handling
   observeEvent(input$mergeBtn, {
-    # Validate file input
     req(input$files)
-    if (length(input$files$datapath) < 1) {
-      values$processing_log <- "ERROR: NO FILES UPLOADED! WHAT ARE YOU DOING?!"
-      return()
-    }
     
-    # Validate header row number
-    if (is.na(input$headerRowNum) || input$headerRowNum < 1) {
-      values$processing_log <- "ERROR: HEADER ROW NUMBER MUST BE AT LEAST 1!"
-      return()
-    }
+    # Reset values
+    values$merged_data <- NULL
+    values$processing_log <- ""
+    values$file_details <- NULL
+    values$processing_complete <- FALSE
+    values$processing_success <- FALSE
     
-    # Switch to processing tab automatically
-    updateTabsetPanel(session, "mainTabs", selected = "processing")
-    
-    # Reset progress
-    values$progress_value <- 0
-    
-    # Show processing message
-    shinyjs::show("processingMsg")
+    # Show processing area and hide download button
+    shinyjs::show("statusMessages")
     shinyjs::hide("downloadArea")
     shinyjs::hide("previewArea")
     
-    values$processing_log <- "🚀 STARTING FILE PROCESSING... LET'S GO!\n"
+    # Update processing title
+    shinyjs::html("processingTitle", "PROCESSING FILES...")
     
-    # Show if filename column is being added
-    if (input$addFilenameColumn) {
-      values$processing_log <- paste0(values$processing_log, "ℹ️ WILL ADD 'Source_File' COLUMN WITH FILENAMES\n")
-    }
+    # Initialize progress
+    updateProgress(0)
     
-    values$processing_log <- paste0(values$processing_log, "ℹ️ USING ROW ", input$headerRowNum, " AS HEADER ROW\n")
-    
-    # Process all files
-    all_data_frames <- list()
-    file_details <- data.frame(
-      File = character(),
-      Type = character(),
-      Rows = integer(),
-      Columns = integer(),
-      Status = character(),
-      stringsAsFactors = FALSE
-    )
-    
-    total_files <- nrow(input$files)
-    
-    for (i in 1:nrow(input$files)) {
-      file_path <- input$files$datapath[i]
-      file_name <- input$files$name[i]
-      file_type <- tools::file_ext(file_name)
-      
-      # Update progress
-      values$progress_value <- round((i / total_files) * 100)
-      
-      # Read file
-      values$processing_log <- paste0(values$processing_log, "📄 PROCESSING FILE ", i, "/", total_files, ": ", file_name, "\n")
-      result <- read_file(file_path, file_name)
-      
-      if (result$success) {
-        all_data_frames[[i]] <- result$data
-        file_details <- rbind(file_details, data.frame(
-          File = file_name,
-          Type = toupper(file_type),
-          Rows = nrow(result$data),
-          Columns = ncol(result$data),
-          Status = "SUCCESS",
-          stringsAsFactors = FALSE
-        ))
-        values$processing_log <- paste0(values$processing_log, "✅ ", result$message, "\n")
-      } else {
-        file_details <- rbind(file_details, data.frame(
-          File = file_name,
-          Type = toupper(file_type),
-          Rows = NA,
-          Columns = NA,
-          Status = "FAILED",
-          stringsAsFactors = FALSE
-        ))
-        values$processing_log <- paste0(values$processing_log, "❌ ", result$message, "\n")
-      }
-    }
-    
-    # Store file details
-    values$file_details <- file_details
-    
-    # Check if we have any successful files
-    if (length(all_data_frames) == 0) {
-      values$processing_log <- paste0(values$processing_log, "❌ NO FILES WERE SUCCESSFULLY PROCESSED. NOTHING TO MERGE.\n")
-      values$progress_value <- 100
-      return()
-    }
-    
-    values$processing_log <- paste0(values$processing_log, "\n🔄 MERGING ", length(all_data_frames), " FILES...\n")
-    
-    # Merge all data frames
+    # Start processing
     tryCatch({
-      merged_data <- bind_rows(all_data_frames)
+      file_count <- nrow(input$files)
+      all_data <- list()
+      file_details <- data.frame(
+        File_Name = character(),
+        File_Type = character(),
+        Rows = numeric(),
+        Columns = numeric(),
+        Status = character(),
+        stringsAsFactors = FALSE
+      )
       
-      # Data cleaning options
-      if (input$removeEmptyRows) {
-        # Remove rows where all values are NA
-        values$processing_log <- paste0(values$processing_log, "🧹 REMOVING EMPTY ROWS...\n")
-        original_rows <- nrow(merged_data)
-        merged_data <- merged_data[rowSums(is.na(merged_data)) != ncol(merged_data), ]
-        rows_removed <- original_rows - nrow(merged_data)
-        values$processing_log <- paste0(values$processing_log, "ℹ️ REMOVED ", rows_removed, " EMPTY ROWS\n")
+      processing_log <- "=== FILE MERGER PRO - PROCESSING LOG ===\n"
+      processing_log <- paste0(processing_log, "Started at: ", Sys.time(), "\n")
+      processing_log <- paste0(processing_log, "Files to process: ", file_count, "\n")
+      processing_log <- paste0(processing_log, "Header row number: ", input$headerRowNum, "\n")
+      processing_log <- paste0(processing_log, "Output format: ", toupper(input$outputFormat), "\n")
+      processing_log <- paste0(processing_log, "Remove empty rows: ", input$removeEmptyRows, "\n")
+      processing_log <- paste0(processing_log, "Trim whitespace: ", input$trimWhitespace, "\n")
+      processing_log <- paste0(processing_log, "Add filename column: ", input$addFilenameColumn, "\n")
+      processing_log <- paste0(processing_log, "Clean special characters: ", input$cleanSpecialChars, "\n")
+      processing_log <- paste0(processing_log, "\n--- PROCESSING FILES ---\n")
+      
+      values$processing_log <- processing_log
+      
+      # Process each file
+      for (i in 1:file_count) {
+        file_info <- input$files[i, ]
+        
+        # Update progress
+        progress_percent <- round((i - 1) / file_count * 100)
+        updateProgress(progress_percent)
+        
+        processing_log <- paste0(processing_log, "\n[", i, "/", file_count, "] Processing: ", file_info$name, "\n")
+        
+        # Read file
+        result <- read_file(file_info$datapath, file_info$name)
+        
+        if (result$success) {
+          data <- result$data
+          
+          # Remove empty rows if option is selected
+          if (input$removeEmptyRows) {
+            original_rows <- nrow(data)
+            data <- data[rowSums(is.na(data)) != ncol(data), ]
+            removed_rows <- original_rows - nrow(data)
+            if (removed_rows > 0) {
+              processing_log <- paste0(processing_log, "   Removed ", removed_rows, " empty rows\n")
+            }
+          }
+          
+          # Trim whitespace if option is selected
+          if (input$trimWhitespace) {
+            char_cols <- sapply(data, is.character)
+            data[char_cols] <- lapply(data[char_cols], trimws)
+            processing_log <- paste0(processing_log, "   Trimmed whitespace from text columns\n")
+          }
+          
+          # Convert all columns to character to avoid binding issues
+          data <- data %>% mutate_all(as.character)
+          
+          all_data[[i]] <- data
+          
+          # Add to file details
+          file_details <- rbind(file_details, data.frame(
+            File_Name = file_info$name,
+            File_Type = toupper(tools::file_ext(file_info$name)),
+            Rows = nrow(data),
+            Columns = ncol(data),
+            Status = "✅ SUCCESS",
+            stringsAsFactors = FALSE
+          ))
+          
+          processing_log <- paste0(processing_log, "   ✅ SUCCESS - ", nrow(data), " rows, ", ncol(data), " columns\n")
+          
+        } else {
+          # Add error to file details
+          file_details <- rbind(file_details, data.frame(
+            File_Name = file_info$name,
+            File_Type = toupper(tools::file_ext(file_info$name)),
+            Rows = 0,
+            Columns = 0,
+            Status = "❌ ERROR",
+            stringsAsFactors = FALSE
+          ))
+          
+          processing_log <- paste0(processing_log, "   ❌ ERROR - ", result$message, "\n")
+        }
+        
+        values$processing_log <- processing_log
       }
       
-      if (input$trimWhitespace) {
-        # Trim whitespace from character columns
-        values$processing_log <- paste0(values$processing_log, "✂️ TRIMMING WHITESPACE FROM TEXT COLUMNS...\n")
-        char_cols <- sapply(merged_data, is.character)
-        merged_data[, char_cols] <- lapply(merged_data[, char_cols, drop = FALSE], trimws)
+      # Update progress to 50% for merging phase
+      updateProgress(50)
+      
+      # Merge all successfully read data
+      successful_data <- all_data[!sapply(all_data, is.null)]
+      
+      if (length(successful_data) > 0) {
+        processing_log <- paste0(processing_log, "\n--- MERGING DATA ---\n")
+        processing_log <- paste0(processing_log, "Merging ", length(successful_data), " successful files...\n")
+        
+        # Use bind_rows for better handling of different column structures
+        merged_data <- bind_rows(successful_data, .id = NULL)
+        
+        processing_log <- paste0(processing_log, "✅ Merge completed - ", nrow(merged_data), " total rows, ", ncol(merged_data), " columns\n")
+        
+        values$merged_data <- merged_data
+        values$processing_success <- TRUE
+        
+        # Update progress to 100%
+        updateProgress(100)
+        
+        processing_log <- paste0(processing_log, "\n=== PROCESSING COMPLETE ===\n")
+        processing_log <- paste0(processing_log, "Completed at: ", Sys.time(), "\n")
+        processing_log <- paste0(processing_log, "Total rows in merged data: ", nrow(merged_data), "\n")
+        processing_log <- paste0(processing_log, "Total columns in merged data: ", ncol(merged_data), "\n")
+        
+        values$processing_log <- processing_log
+        values$file_details <- file_details
+        values$processing_complete <- TRUE
+        
+        # Show success message
+        output$statusMessage <- renderUI({
+          tags$div(
+            class = "neo-alert neo-alert-success",
+            tags$strong("🎉 SUCCESS!"),
+            tags$br(),
+            paste0("Successfully merged ", length(successful_data), " files with ", 
+                   nrow(merged_data), " total rows and ", ncol(merged_data), " columns!")
+          )
+        })
+        
+        # Show download button
+        shinyjs::show("downloadArea")
+        
+        # Show preview if enabled
+        if (input$preview) {
+          shinyjs::show("previewArea")
+          
+          # Update data stats
+          shinyjs::html("dataStats", paste0(nrow(merged_data), " ROWS • ", ncol(merged_data), " COLUMNS"))
+        }
+        
+      } else {
+        # No successful files
+        values$processing_success <- FALSE
+        updateProgress(100)
+        
+        processing_log <- paste0(processing_log, "\n❌ NO FILES WERE SUCCESSFULLY PROCESSED\n")
+        processing_log <- paste0(processing_log, "Completed at: ", Sys.time(), "\n")
+        
+        values$processing_log <- processing_log
+        values$file_details <- file_details
+        values$processing_complete <- TRUE
+        
+        # Show error message
+        output$statusMessage <- renderUI({
+          tags$div(
+            class = "neo-alert neo-alert-error",
+            tags$strong("❌ ERROR!"),
+            tags$br(),
+            "No files were successfully processed. Please check the processing log for details."
+          )
+        })
       }
-      
-      # Save the merged data
-      values$merged_data <- merged_data
-      
-      # Update processing log
-      values$processing_log <- paste0(values$processing_log, "✅ MERGE COMPLETE! ", nrow(merged_data), " ROWS AND ", ncol(merged_data), " COLUMNS IN FINAL DATA\n")
-      values$processing_log <- paste0(values$processing_log, "🎉 READY FOR DOWNLOAD!\n")
-      
-      # Show download button
-      shinyjs::show("downloadArea")
-      
-      # Show preview if selected
-      if (input$preview) {
-        shinyjs::show("previewArea")
-        # Update data stats
-        shinyjs::html("dataStats", paste0(nrow(merged_data), " ROWS × ", ncol(merged_data), " COLUMNS"))
-      }
-      
-      # Update progress bar to 100%
-      values$progress_value <- 100
       
     }, error = function(e) {
-      values$processing_log <- paste0(values$processing_log, "❌ ERROR DURING MERGE: ", e$message, "\n")
-      values$progress_value <- 100
+      # Handle unexpected errors
+      values$processing_success <- FALSE
+      updateProgress(100)
+      
+      error_log <- paste0(values$processing_log, "\n❌ UNEXPECTED ERROR: ", e$message, "\n")
+      error_log <- paste0(error_log, "Completed at: ", Sys.time(), "\n")
+      
+      values$processing_log <- error_log
+      values$processing_complete <- TRUE
+      
+      # Show error message
+      output$statusMessage <- renderUI({
+        tags$div(
+          class = "neo-alert neo-alert-error",
+          tags$strong("❌ UNEXPECTED ERROR!"),
+          tags$br(),
+          e$message
+        )
+      })
     })
   })
-  
-  # Download handler
-  output$downloadBtn <- downloadHandler(
-    filename = function() {
-      # Create a timestamp-based filename
-      timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
-      
-      if (input$outputFormat == "csv") {
-        paste0("merged_data_", timestamp, ".csv")
-      } else {
-        paste0("merged_data_", timestamp, ".xlsx")
-      }
-    },
-    content = function(file) {
-      # Get the merged data
-      data <- values$merged_data
-      
-      if (is.null(data)) {
-        return(NULL)
-      }
-      
-      # Export based on format
-      if (input$outputFormat == "csv") {
-        write_csv(data, file)
-      } else {
-        write_xlsx(data, file)
-      }
-    }
-  )
   
   # Data preview output
   output$dataPreview <- renderDT({
     req(values$merged_data)
     
-    # Limit preview to first 1000 rows for performance
+    # Show first 1000 rows for performance
     preview_data <- head(values$merged_data, 1000)
     
     datatable(preview_data, 
@@ -891,22 +1000,50 @@ server <- function(input, output, session) {
                 )
               ),
               class = 'cell-border stripe hover') %>%
-      formatStyle(names(preview_data), backgroundColor = 'white', color = 'black')
+      formatStyle(columns = 1:ncol(preview_data), 
+                  border = '1px solid #000000')
   })
   
-  # Processing log output
+  # Processing status output
   output$processingStatus <- renderText({
-    req(values$processing_log)
-    return(values$processing_log)
+    if (is.null(values$processing_log)) {
+      "Ready to process files...\nUpload files and click 'MERGE FILES!' to start."
+    } else {
+      values$processing_log
+    }
   })
   
-  # React to tab change
-  observeEvent(input$mainTabs, {
-    # If switching to processing tab and files are uploaded
-    if (input$mainTabs == "processing" && values$uploaded_files > 0) {
-      # Show the processing log
-      shinyjs::show("processingStatus")
+  # Download handler
+  output$downloadBtn <- downloadHandler(
+    filename = function() {
+      timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+      if (input$outputFormat == "csv") {
+        paste0("merged_data_", timestamp, ".csv")
+      } else {
+        paste0("merged_data_", timestamp, ".xlsx")
+      }
+    },
+    content = function(file) {
+      req(values$merged_data)
+      
+      if (input$outputFormat == "csv") {
+        write_csv(values$merged_data, file)
+      } else {
+        write_xlsx(values$merged_data, file)
+      }
     }
+  )
+  
+  # Auto-switch to processing tab when merge starts
+  observeEvent(input$mergeBtn, {
+    updateTabsetPanel(session, "mainTabs", selected = "processing")
+  })
+  
+  # Session cleanup
+  session$onSessionEnded(function() {
+    # Clean up any temporary files or resources
+    # Note: We don't need to explicitly set reactive values to NULL
+    # as they will be garbage collected when the session ends
   })
 }
 
